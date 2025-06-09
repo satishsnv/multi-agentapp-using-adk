@@ -1,69 +1,68 @@
-from google.adk.agents import Agent, SequentialAgent
+from google.adk.agents import Agent
 from constants import *
 from google.adk.models.lite_llm import LiteLlm
-from agents.models import FileSummaryClassificationOutput, FileContent
+from agents.models import FileSummaryClassificationOutput
 from agents.tools.content import fetch_file_content
+from agents.subagents.custom_agent import CustomProcessingAgent
+from agents.subagents.metadata import metadata_update_agent
 
-content_processing_agent = Agent(
+
+processing_agent = Agent(
     name="processing_agent",
     description="Specialist agent for processing the file content",
     instruction="""
-        You are expert in document processing. you will be provided with file content and its corresponding file_id.
-        
-        ```content to process
-        
-        {file_content}
-
-        ```
-        
-        Use the content to generate the summary, classification and sentiment in FileSummaryClassificationOutput format. 
+        You are expert in document processing. 
+        Analyze the provided FileContent object in the session state with key 'file_content_key' and
+        Use the file_content attribute to generate the summary, classification and sentiment of the content in FileSummaryClassificationOutput format. 
         You should return the FileSummaryClassificationOutput object only nothing else.    
-        The summary should be concise and informative with maximum of 10 bullet points.
-        The classification should be a list of top 5 classifications.
+        The summary should be concise and informative with maximum of 10 points.
+        The classification should be a list of top 2-3 classifications.
         The sentiment should be a sentiment object with label and score.
-        The label should be one of the following: positive, negative, neutral. score should be a float between -1 and 1.
+        The label should be one of the following: positive, negative. score should be a float between -1 and 1.
         include the file_id in the output.
-        you should return the FileSummaryClassificationOutput object only nothing else.
-    """,
-    output_schema=FileSummaryClassificationOutput, 
-    model=LiteLlm(model=GPT_4O_MINI_MODEL)
+        you should return the FileSummaryClassificationOutput as a valid json string.
+    """, 
+    model=LiteLlm(model=GPT_4O_MINI_MODEL),
+    output_key="file_summary_classification_output",  # This is the key that will be used to access the output of the tool
 )
 
-
-content_fetching_agent = Agent(
-    name="content_fetching_agent",
+fetching_agent = Agent(
+    name="fetching_agent",
     description="Specialist agent for fetching the file content",
     instruction="""
-        You should utilize the tool for fetching file content. 
-        You can ask for file_id or resourceids in the input, if not provided, you can ask the user to provide it.
-        Tool will return the content in FileContent format .
-        Return the FileContent returned by the tool as it is.
+        You are expert in fetching the file content. check for the unique identifier and use it to fetch the file content.
+        If the file_id is not provided, ask the user for it.
+        You should return the FileContent object only nothing else.
+        The FileContent object should contain the file_content attribute which is a list of strings and the file_id attribute.
+        Return the FileContent object provided by the tool as it is, do not modify it.
     """,
     tools=[fetch_file_content],
-    model=GEMINI_FLASH_MODEL,
-    output_key="file_content",  # This is the key that will be used to access the output of the tool
+    model=LiteLlm(model=GPT_4O_MINI_MODEL),
+    output_key="file_content_key",  # This is the key that will be used to access the output of the tool
 )
 
 
-data_aggregating_agent = Agent(
+aggregating_agent = Agent(
     name="aggregating_agent",
     description="Specialist agent in aggregating given objects",
     instruction="""
         You are expert in aggregating the data objects.
-        you will be provided with a list of FileSummaryClassificationOutput objects, they all have same file_id.
-        You should generate the aggregated summary, classification and sentiment based on the provided objects.
-        You should return the aggregated FileSummaryClassificationOutput object only nothing else.
+        Analyze the provided list of FileSummaryClassificationOutput objects in session state with key 'file_summary_classification_output' and
+        aggregate them in to a single FileSummaryClassificationOutput object.
         Aggregated summary should be summary of all summaries.
-        Aggregated classification should be maximum repeated classifications, consider only top 5 classifications.
+        Aggregated classification should be maximum repeated classifications, consider only top 2-3 classifications.
         Aggregated sentiment should be the weighted average sentiment score.     
-        The label should be one of the following: positive, negative, neutral. score should be a float between -1 and 1.
-        include the file_id in the output.
     """,
-    model=LiteLlm(model=GPT_4O_MINI_MODEL)
+    output_schema=FileSummaryClassificationOutput,
+    model=LiteLlm(model=GPT_4O_MINI_MODEL),
+    output_key="aggregated_result"
 )
 
-content_management_agent = SequentialAgent(
-    name="content_management_agent",
-    description="Agent for managing the entire content processing tasks",
-    sub_agents=[content_fetching_agent, content_processing_agent]
+custom_processing_agent = CustomProcessingAgent(
+    name="custom_processing_agent",
+    description="A custom agent for processing documents of any size with specific logic.",
+    fetching_agent=fetching_agent,
+    processing_agent=processing_agent,
+    aggregating_agent=aggregating_agent,
+    metadata_update_agent=metadata_update_agent
 )

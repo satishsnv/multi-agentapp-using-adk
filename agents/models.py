@@ -9,11 +9,11 @@ class Sentiment(BaseModel):
 
 class FileSummaryClassificationOutput(BaseModel):
     file_id: str = Field(default="", description="Unique identifier for the file")
-    summary: str = Field(default="", description="Summary of the file content")
+    summary: List[str] = Field(default=[], description="Summary of the file content in a list of strings")
     classification: List[str] = Field(default=[], description="List of classifications for the file content")
     sentiment: Sentiment = Field(default=Sentiment(label="neutral", score=0.0), description="Sentiment analysis result")
 
 
 class FileContent(BaseModel):
-    content: List[str] = Field(default=[], description="List of file content items")
+    file_content: List[str] = Field(default=[], description="List of file content items")
     file_id: str = Field(default="", description="Unique identifier for the file")
